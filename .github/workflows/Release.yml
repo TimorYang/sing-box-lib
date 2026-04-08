@@ -374,106 +374,9 @@ jobs:
           path: artifacts
           retention-days: 1
 
-  build_android:
-    name: Build Android
-    needs: check_release
-    if: needs.check_release.outputs.skip_release == 'false'
-    runs-on: ubuntu-latest
-    outputs:
-      android_checksum: ${{ steps.build_android.outputs.android_checksum }}
-    steps:
-      - name: Checkout sing-box
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
-        with:
-          repository: 'SagerNet/sing-box'
-          ref: ${{ needs.check_release.outputs.tag }}
-          submodules: 'recursive'
-          fetch-depth: 0
-          
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ~1.25.8
-          
-      - name: Setup Android NDK
-        id: setup-ndk
-        uses: nttld/setup-ndk@v1
-        with:
-          ndk-version: r28
-          
-      - name: Setup OpenJDK
-        run: |-
-          sudo apt update && sudo apt install -y openjdk-17-jdk-headless
-          /usr/lib/jvm/java-17-openjdk-amd64/bin/java --version
-
-      - name: Set tag
-        run: |-
-          git tag v${{ needs.check_release.outputs.tag }} -f
-
-      - name: Clean previous builds
-        run: |
-          # Clean any previous build artifacts to avoid conflicts
-          rm -f libbox.aar
-          rm -rf libbox-android
-          rm -f libbox-android.aar.zip
-          rm -rf artifacts
-          mkdir -p artifacts
-
-      - name: Build library
-        id: build_android
-        run: |-
-          echo "=== Starting Android Library Build ==="
-          
-          # Install dependencies using official sing-box method
-          make lib_install
-          export PATH="$PATH:$(go env GOPATH)/bin"
-          
-          # Build Android library using official sing-box method
-          echo "Building Android library using official sing-box method..."
-          make lib_android
-          
-          echo "=== Post-build Verification ==="
-          if [ -f "libbox.aar" ]; then
-            echo "✅ libbox.aar created successfully"
-            ls -la libbox.aar
-          else
-            echo "❌ libbox.aar not found!"
-            exit 1
-          fi
-          
-          # Create a directory for packaging
-          mkdir -p artifacts
-          
-          # Package the AAR file with proper directory structure
-          mkdir -p libbox-android
-          cp libbox.aar libbox-android/
-          
-          # Zip the directory for compatibility
-          zip -ry libbox-android.aar.zip libbox-android
-          
-          # Calculate checksum and set output
-          ANDROID_CHECKSUM="$(sha256sum libbox-android.aar.zip | cut -d ' ' -f 1)"
-          echo "android_checksum=${ANDROID_CHECKSUM}" >> $GITHUB_OUTPUT
-          
-          # Copy to artifacts directory for upload
-          cp libbox-android.aar.zip artifacts/
-          
-          echo "✅ Android library built with checksum: ${ANDROID_CHECKSUM}"
-        env:
-          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          CGO_ENABLED: "1"
-          
-      - name: Upload Android artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-library
-          path: artifacts
-          retention-days: 1
-
   publish_release:
     name: Publish Release
-    needs: [check_release, build_apple, build_android]
+    needs: [check_release, build_apple]
     if: needs.check_release.outputs.skip_release == 'false'
     runs-on: ubuntu-latest
     steps:
@@ -497,14 +400,10 @@ jobs:
           cp artifacts/Libbox-ios-official.xcframework.zip release/
           cp artifacts/Libbox-apple.xcframework.zip release/
           
-          # Copy Android library
-          cp artifacts/libbox-android.aar.zip release/
-          
           # Set environment variables for next steps
           echo "IOS_CHECKSUM=${{ needs.build_apple.outputs.ios_checksum }}" >> $GITHUB_ENV
           echo "IOS_OFFICIAL_CHECKSUM=${{ needs.build_apple.outputs.ios_official_checksum }}" >> $GITHUB_ENV
           echo "APPLE_CHECKSUM=${{ needs.build_apple.outputs.apple_universal_checksum }}" >> $GITHUB_ENV
-          echo "ANDROID_CHECKSUM=${{ needs.build_android.outputs.android_checksum }}" >> $GITHUB_ENV
           echo "TAG=${{ needs.check_release.outputs.tag }}" >> $GITHUB_ENV
 
       - name: Prepare git for Package.swift update
@@ -538,9 +437,9 @@ jobs:
           
           echo "Git preparation completed"
 
-      - name: Update Package.swift for Swift Package Manager
+      - name: Generate Package.swift for Swift Package Manager
         run: |
-          echo "Creating Package.swift files for both patched and official versions"
+          echo "Generating Package.swift files for SPM integration (patched + official)"
           
           # Create Package.swift for patched version (default)
           echo "Updating Package.swift for tag: ${TAG} with checksum: ${IOS_CHECKSUM}"
@@ -619,12 +518,9 @@ jobs:
             ### Apple Universal Library (Libbox-apple.xcframework.zip)
             SHA256: ${{ env.APPLE_CHECKSUM }}
             
-            ### Android Library (libbox-android.aar.zip)
-            SHA256: ${{ env.ANDROID_CHECKSUM }}
           files: |
             release/Libbox-ios.xcframework.zip
             release/Libbox-ios-official.xcframework.zip
             release/Libbox-apple.xcframework.zip
-            release/libbox-android.aar.zip
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_TOKEN || secrets.GITHUB_TOKEN }}
