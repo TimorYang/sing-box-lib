@@ -68,8 +68,9 @@ jobs:
         id: check_existing
         env:
           GH_TOKEN: ${{ secrets.PERSONAL_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
-          echo "=== [DEBUG] Checking for existing release in proother/sing-box-lib..."
+          echo "=== [DEBUG] Checking for existing release in ${REPO}..."
           echo "TAG='${TAG}' (length=${#TAG})"
           echo "Using token: ${{ secrets.PERSONAL_TOKEN && 'PERSONAL_TOKEN' || 'GITHUB_TOKEN' }}"
       
@@ -79,7 +80,7 @@ jobs:
           }
           
           existing_release=$(
-            gh release list --json tagName -R proother/sing-box-lib --limit 100 \
+            gh release list --json tagName -R "${REPO}" --limit 100 \
               | jq -r '.[].tagName' \
               | grep -x "${TAG}" \
               | wc -l
@@ -102,6 +103,7 @@ jobs:
           github.event.inputs.delete_if_exists == 'true'
         env:
           GH_TOKEN: ${{ secrets.PERSONAL_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           echo "Attempting to delete existing release '${TAG}'..."
           echo "Using token: ${{ secrets.PERSONAL_TOKEN && 'PERSONAL_TOKEN (enhanced permissions)' || 'GITHUB_TOKEN (limited permissions)' }}"
@@ -114,7 +116,7 @@ jobs:
           fi
           
           # Attempt to delete the release with better error handling
-          if gh release delete "${TAG}" -R proother/sing-box-lib -y --cleanup-tag 2>/dev/null; then
+          if gh release delete "${TAG}" -R "${REPO}" -y --cleanup-tag 2>/dev/null; then
             echo "✅ Successfully deleted release '${TAG}'"
             echo "was_deleted=true" >> $GITHUB_OUTPUT
           else
@@ -456,7 +458,7 @@ jobs:
           echo "  targets: [" >> Package.swift
           echo "    .binaryTarget(" >> Package.swift
           echo "      name: \"Libbox\"," >> Package.swift
-          echo "      url: \"https://github.com/proother/sing-box-lib/releases/download/${TAG}/Libbox-ios.xcframework.zip\"," >> Package.swift
+          echo "      url: \"https://github.com/${{ github.repository }}/releases/download/${TAG}/Libbox-ios.xcframework.zip\"," >> Package.swift
           echo "      checksum: \"${IOS_CHECKSUM}\"" >> Package.swift
           echo "    )" >> Package.swift
           echo "  ]" >> Package.swift
@@ -477,7 +479,7 @@ jobs:
           echo "  targets: [" >> Package-official.swift
           echo "    .binaryTarget(" >> Package-official.swift
           echo "      name: \"Libbox\"," >> Package-official.swift
-          echo "      url: \"https://github.com/proother/sing-box-lib/releases/download/${TAG}/Libbox-ios-official.xcframework.zip\"," >> Package-official.swift
+          echo "      url: \"https://github.com/${{ github.repository }}/releases/download/${TAG}/Libbox-ios-official.xcframework.zip\"," >> Package-official.swift
           echo "      checksum: \"${IOS_OFFICIAL_CHECKSUM}\"" >> Package-official.swift
           echo "    )" >> Package-official.swift
           echo "  ]" >> Package-official.swift
